@@ -175,13 +175,9 @@ text_input = st.text_area(
     key=f"text_input_{st.session_state.text_input_key}",
     help="You can type directly using your physical keyboard!"
 )
-
-# Update session state if text changed via keyboard input
 if text_input != st.session_state.text:
-    # Process only valid characters
-    processed_text = ''.join(c for c in text_input.lower() if c in CHARS)
-    st.session_state.text = processed_text
-    st.rerun()
+    st.session_state.text = ''.join(c for c in text_input.lower() if c in CHARS)
+
 
 # Calculate probabilities based on current text
 context = st.session_state.text.lower()
