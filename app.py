@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 # Constants
-CORPUS_PATH = r"D:\project\corpus.txt"
+CORPUS_PATH = "corpus.txt"
 K_SMOOTHING = 1e-6
 LAMBDA_TRIGRAM = 0.7
 LAMBDA_BIGRAM = 0.2
