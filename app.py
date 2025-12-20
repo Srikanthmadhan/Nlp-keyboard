@@ -10,7 +10,6 @@ st.set_page_config(
 )
 
 # Constants
-CORPUS_PATH = "corpus.txt"
 K_SMOOTHING = 1e-6
 LAMBDA_TRIGRAM = 0.7
 LAMBDA_BIGRAM = 0.2
@@ -25,6 +24,21 @@ KEYBOARD_LAYOUT = [
     ['z', 'x', 'c', 'v', 'b', 'n', 'm']
 ]
 
+def get_corpus_path():
+    """Get corpus path with fallback options"""
+    # Try multiple possible locations
+    possible_paths = [
+        "corpus.txt",
+        os.path.join(os.path.dirname(__file__), "corpus.txt"),
+        os.path.join(os.getcwd(), "corpus.txt")
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
+
 def preprocess_corpus(text):
     """Preprocess corpus: lowercase, keep only a-z and space"""
     text = text.lower()
@@ -33,16 +47,35 @@ def preprocess_corpus(text):
     return text
 
 @st.cache_resource
-def build_language_model(corpus_path):
+def build_language_model(corpus_text=None):
     """Build n-gram language model from corpus"""
     
-    # Read corpus
-    try:
-        with open(corpus_path, 'r', encoding='utf-8') as f:
-            corpus = f.read()
-    except FileNotFoundError:
-        st.error(f"Corpus file not found at: {corpus_path}")
-        st.stop()
+    if corpus_text is None:
+        # Try to read from file
+        corpus_path = get_corpus_path()
+        
+        if corpus_path is None:
+            st.error("⚠️ Corpus file not found!")
+            st.info("Please ensure 'corpus.txt' is in the same directory as this app.")
+            
+            # Provide option to use sample text
+            use_sample = st.checkbox("Use sample corpus for demo?")
+            if use_sample:
+                corpus = """the quick brown fox jumps over the lazy dog this is a sample text 
+                to demonstrate the probabilistic keyboard application when the corpus file is not available 
+                you should replace this with your actual training corpus for better predictions"""
+            else:
+                st.stop()
+        else:
+            try:
+                with open(corpus_path, 'r', encoding='utf-8') as f:
+                    corpus = f.read()
+                st.success(f"✓ Corpus loaded from: {corpus_path}")
+            except Exception as e:
+                st.error(f"Error reading corpus: {str(e)}")
+                st.stop()
+    else:
+        corpus = corpus_text
     
     # Preprocess
     corpus = preprocess_corpus(corpus)
@@ -103,7 +136,6 @@ def calculate_probabilities(model, context):
             bigram_count = bigram_counts.get(char, 0)
             bigram_prob = (bigram_count + K_SMOOTHING) / (bigram_total + K_SMOOTHING * VOCAB_SIZE)
             
-            # FIXED: Correct interpolation - only bigram and unigram weighted properly
             prob = LAMBDA_BIGRAM * bigram_prob + LAMBDA_UNIGRAM * unigram_prob
             
         else:
@@ -121,7 +153,6 @@ def calculate_probabilities(model, context):
             bigram_count = bigram_counts.get(char, 0)
             bigram_prob = (bigram_count + K_SMOOTHING) / (bigram_total + K_SMOOTHING * VOCAB_SIZE)
             
-            # FIXED: Correct interpolation with all three models
             prob = (LAMBDA_TRIGRAM * trigram_prob + 
                    LAMBDA_BIGRAM * bigram_prob + 
                    LAMBDA_UNIGRAM * unigram_prob)
@@ -136,10 +167,7 @@ def calculate_probabilities(model, context):
 
 def get_color(prob):
     """Get background color based on probability"""
-    # Scale: 0% = light, higher % = darker blue
-    intensity = min(prob / 20, 1.0)  # Cap at 20% for color scaling
-    
-    # HSL color: darker blue for higher probability
+    intensity = min(prob / 20, 1.0)
     lightness = int(95 - (intensity * 45))
     return f"hsl(200, 70%, {lightness}%)"
 
@@ -156,7 +184,7 @@ if 'text_input_key' not in st.session_state:
 
 # Load language model
 with st.spinner('Loading language model...'):
-    model = build_language_model(CORPUS_PATH)
+    model = build_language_model()
 
 st.success(f"✓ Language model loaded ({len(model['unigrams'])} unique characters, {model['total_unigrams']:,} total chars)")
 
@@ -164,10 +192,9 @@ st.success(f"✓ Language model loaded ({len(model['unigrams'])} unique characte
 st.title("⌨️ Probabilistic Character-Level Keyboard")
 st.markdown("*Each key shows the probability (%) of being the next character*")
 
-# Text input area - allows typing from physical keyboard
+# Text input area
 st.markdown("### Typed Text")
 
-# Text input that accepts keyboard input
 text_input = st.text_area(
     "Type here using your keyboard or click the on-screen keys below:",
     value=st.session_state.text,
@@ -178,8 +205,7 @@ text_input = st.text_area(
 if text_input != st.session_state.text:
     st.session_state.text = ''.join(c for c in text_input.lower() if c in CHARS)
 
-
-# Calculate probabilities based on current text
+# Calculate probabilities
 context = st.session_state.text.lower()
 probabilities = calculate_probabilities(model, context)
 
@@ -205,7 +231,7 @@ st.markdown("---")
 st.markdown("### On-Screen Keyboard")
 st.caption("Click keys below or type directly in the text area above")
 
-# Custom CSS for better button styling
+# Custom CSS
 st.markdown("""
 <style>
 div[data-testid="stButton"] > button {
@@ -223,16 +249,15 @@ div[data-testid="stButton"] > button:hover {
 </style>
 """, unsafe_allow_html=True)
 
-# Create keyboard rows with proper QWERTY alignment
+# Create keyboard rows
 for row_idx, row in enumerate(KEYBOARD_LAYOUT):
-    # Calculate offset for centering each row (QWERTY stagger)
-    if row_idx == 0:  # Top row (10 keys) - QWERTYUIOP
+    if row_idx == 0:
         cols = st.columns([0.5] + [1]*10 + [0.5])
         start_col = 1
-    elif row_idx == 1:  # Middle row (9 keys) - ASDFGHJKL
+    elif row_idx == 1:
         cols = st.columns([1] + [1]*9 + [1])
         start_col = 1
-    else:  # Bottom row (7 keys) - ZXCVBNM
+    else:
         cols = st.columns([1.5] + [1]*7 + [1.5])
         start_col = 1
     
@@ -241,7 +266,6 @@ for row_idx, row in enumerate(KEYBOARD_LAYOUT):
         display_char = '␣' if char == ' ' else char.upper()
         
         with cols[start_col + i]:
-            # Create button label with character and probability
             button_label = f"{display_char}\n{prob:.2f}%"
             
             if st.button(
@@ -253,7 +277,7 @@ for row_idx, row in enumerate(KEYBOARD_LAYOUT):
                 st.session_state.text += char
                 st.rerun()
 
-# Space bar row
+# Space bar
 st.markdown("<br>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns([2, 6, 2])
 with col2:
@@ -282,7 +306,7 @@ with col3:
         st.session_state.text = ''
         st.rerun()
 
-# Footer with information
+# Footer
 st.markdown("---")
 with st.expander("ℹ️ About this application"):
     st.markdown("""
@@ -314,7 +338,7 @@ with st.expander("ℹ️ About this application"):
     - Real-time updates with no lag
     """)
 
-# Debug information (optional)
+# Debug information
 if st.checkbox("Show debug information"):
     st.subheader("Debug Info")
     
@@ -336,7 +360,6 @@ if st.checkbox("Show debug information"):
             display = '␣ (space)' if char == ' ' else f'{char}'
             st.write(f"{display}: {prob:.4f}%")
     
-    # Verify interpolation weights
     st.write("**Model Configuration:**")
     st.json({
         "Lambda weights": {
